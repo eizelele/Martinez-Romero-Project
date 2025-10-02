@@ -1,6 +1,6 @@
 # CS 2
 
-## Project title: FamiLynk
+# Project title: FamiLynk
 This is a simple program that helps Filipino households struggle to manage daily tasks, schedules, and responsibilities.
 
 ## Features
