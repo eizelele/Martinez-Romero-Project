@@ -1,6 +1,6 @@
 # CS 2
 
-# CS2Q1SG3-Activity-Creating-a-Change-Log-for-the-First-Quarter-Project
+## Project title: FamiLynk
 This is a simple program that helps Filipino households struggle to manage daily tasks, schedules, and responsibilities.
 
 ## Features
