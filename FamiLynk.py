@@ -16,9 +16,9 @@ def send_sms(to_number, message):
             from_=twilio_number,
             to=to_number
         )
-        print(f"✅ SMS sent to {to_number}")
+        print(f" SMS sent to {to_number}")
     except Exception as e:
-        print(f"❌ Could not send SMS: {e}")
+        print(f" Could not send SMS: {e}")
 
 # ===== DATA =====
 data = {
@@ -44,7 +44,7 @@ def input_family():
         print("Family name cannot be empty!")
         name = input("Enter family name: ").strip()
     data["family"] = name
-    print(f"Welcome, {name} Family 👋")
+    print(f"Welcome, {name} Family")
 
 # ===== EVENTS =====
 def add_event():
@@ -97,7 +97,7 @@ def list_chores():
         print("No chores yet.")
         return
     for i, c in enumerate(data["chores"], 1):
-        status = "✅ Done" if c["done"] else "❌ Pending"
+        status = "Done" if c["done"] else " Pending"
         print(f"{i}. {c['name']} - {c['person']} ({status})")
 
 def mark_chore_done():
@@ -142,7 +142,7 @@ def list_bills():
     for i, b in enumerate(data["bills"], 1):
         bd = datetime.strptime(b["date"], "%Y-%m-%d")
         diff = (bd - today).days
-        status = f"Due in {diff} day(s)" if diff >= 0 else "Elapsed ❌"
+        status = f"Due in {diff} day(s)" if diff >= 0 else "Elapsed"
         print(f"{i}. {b['name']} - {b['date']} ({status})")
 
 def remove_bill():
@@ -169,7 +169,7 @@ def list_groceries():
         print("No groceries yet.")
         return
     for i, g in enumerate(data["groceries"], 1):
-        expired = "❌ Expired" if datetime.strptime(g["date"], "%Y-%m-%d") < today else "✅ Fresh"
+        expired = "Expired" if datetime.strptime(g["date"], "%Y-%m-%d") < today else "Fresh"
         print(f"{i}. {g['name']} - Exp: {g['date']} ({expired})")
 
 def remove_grocery():
@@ -247,3 +247,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
