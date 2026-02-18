@@ -1,7 +1,9 @@
 from datetime import datetime
 
 
-# ===== TWILIO SETTINGS =====
+'''
+===== TWILIO SETTINGS =====
+'''
 account_sid = 'ACcfb25e2c39f10ff1fa59a72a67408cd4'
 auth_token = 'fc4e92c9ecf60b4245b3c6d886643b64'
 twilio_number = '+14352203434'
@@ -247,4 +249,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
