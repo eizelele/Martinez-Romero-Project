@@ -1,5 +1,8 @@
 This file lists all the updates made to our FamiLynk app.
 
+## Version v1.3 - February 18, 2026
+Added the python code with no sms messaging
+
 ## Version v1.2 - October 30, 2025
 Added a flowchart
 
