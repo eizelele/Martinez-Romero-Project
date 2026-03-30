@@ -1,35 +1,41 @@
 from datetime import datetime
+import requests
+import json
+import os
 
+# ===== TELEGRAM SETTINGS =====
+TOKEN = "8712367782:AAGm-0SGpYlRWZbPhLaKLGbbw-LHWwHS4I0"  # Replace with your Telegram bot token
+CHAT_ID = ""  # Will be set by user input
+DATA_FILE = "data.json"
 
-'''
-===== TWILIO SETTINGS =====
-'''
-account_sid = 'ACcfb25e2c39f10ff1fa59a72a67408cd4'
-auth_token = 'fc4e92c9ecf60b4245b3c6d886643b64'
-twilio_number = '+14352203434'
-
-client = Client(account_sid, auth_token)
-
-def send_sms(to_number, message):
-    """Send SMS using Twilio"""
+# ===== TELEGRAM FUNCTION =====
+def send_telegram(message):
+    """Send message using Telegram bot with Markdown formatting"""
+    if not CHAT_ID:
+        print("No chat ID set! Telegram message not sent.")
+        return
     try:
-        client.messages.create(
-            body=message,
-            from_=twilio_number,
-            to=to_number
-        )
-        print(f" SMS sent to {to_number}")
+        url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
+        data = {"chat_id": CHAT_ID, "text": message, "parse_mode": "Markdown"}
+        requests.post(url, data=data)
+        print("Message sent via Telegram")
     except Exception as e:
-        print(f" Could not send SMS: {e}")
+        print(f"Could not send message: {e}")
+
+# ===== LOAD / SAVE DATA =====
+def load_data():
+    if os.path.exists(DATA_FILE):
+        with open(DATA_FILE, "r") as f:
+            return json.load(f)
+    else:
+        return {"family": "", "chores": [], "events": [], "bills": [], "groceries": []}
+
+def save_data():
+    with open(DATA_FILE, "w") as f:
+        json.dump(data, f, indent=4)
 
 # ===== DATA =====
-data = {
-    "family": "",
-    "chores": [],
-    "events": [],
-    "bills": [],
-    "groceries": []
-}
+data = load_data()
 
 # ===== HELPERS =====
 def print_menu():
@@ -46,19 +52,26 @@ def input_family():
         print("Family name cannot be empty!")
         name = input("Enter family name: ").strip()
     data["family"] = name
-    print(f"Welcome, {name} Family")
+    save_data()
+    print(f"\nWelcome, {name} Family!")
+
+def input_chat_id():
+    global CHAT_ID
+    CHAT_ID = input("Enter your Telegram chat ID: ").strip()
+    while not CHAT_ID.isdigit():
+        print("Chat ID must be a number!")
+        CHAT_ID = input("Enter your Telegram chat ID: ").strip()
+    print("Chat ID saved!")
 
 # ===== EVENTS =====
 def add_event():
     date = input("Event date (YYYY-MM-DD): ").strip()
     text = input("Event description: ").strip()
-    phone = input("Enter phone number to notify (+639XXXXXXXXX): ").strip()
-
     data["events"].append({"date": date, "text": text})
+    save_data()
     print("Event added!")
-
-    message = f"Hi! New family event on {date}: {text}"
-    send_sms(phone, message)
+    message = f"*New Family Event!*\n*Date:* {date}\n*Event:* {text}"
+    send_telegram(message)
 
 def list_events():
     today = datetime.today()
@@ -78,6 +91,7 @@ def remove_event():
     try:
         i = int(input("Enter event number to remove: ")) - 1
         removed = data["events"].pop(i)
+        save_data()
         print(f"Removed: {removed['text']}")
     except (ValueError, IndexError):
         print("Invalid selection!")
@@ -86,20 +100,18 @@ def remove_event():
 def add_chore():
     name = input("Chore name: ").strip()
     person = input("Assigned to: ").strip()
-    phone = input("Enter phone number to notify (+639XXXXXXXXX): ").strip()
-
     data["chores"].append({"name": name, "person": person, "done": False})
+    save_data()
     print("Chore added!")
-
-    message = f"Hi {person}, you have a new chore: {name}"
-    send_sms(phone, message)
+    message = f"*New Chore Assigned!*\n*Person:* {person}\n*Chore:* {name}"
+    send_telegram(message)
 
 def list_chores():
     if not data["chores"]:
         print("No chores yet.")
         return
     for i, c in enumerate(data["chores"], 1):
-        status = "Done" if c["done"] else " Pending"
+        status = "Done" if c["done"] else "Pending"
         print(f"{i}. {c['name']} - {c['person']} ({status})")
 
 def mark_chore_done():
@@ -109,6 +121,7 @@ def mark_chore_done():
     try:
         i = int(input("Enter chore number to mark done: ")) - 1
         data["chores"][i]["done"] = True
+        save_data()
         print("Chore marked as done!")
     except (ValueError, IndexError):
         print("Invalid selection!")
@@ -120,6 +133,7 @@ def remove_chore():
     try:
         i = int(input("Enter chore number to remove: ")) - 1
         removed = data["chores"].pop(i)
+        save_data()
         print(f"Removed: {removed['name']}")
     except (ValueError, IndexError):
         print("Invalid selection!")
@@ -128,13 +142,11 @@ def remove_chore():
 def add_bill():
     name = input("Bill name: ").strip()
     date = input("Due date (YYYY-MM-DD): ").strip()
-    phone = input("Enter phone number to notify (+639XXXXXXXXX): ").strip()
-
     data["bills"].append({"name": name, "date": date})
+    save_data()
     print("Bill added!")
-
-    message = f"Hi! New bill due on {date}: {name}"
-    send_sms(phone, message)
+    message = f"*New Bill Due!*\n*Bill:* {name}\n*Due Date:* {date}"
+    send_telegram(message)
 
 def list_bills():
     today = datetime.today()
@@ -154,6 +166,7 @@ def remove_bill():
     try:
         i = int(input("Enter bill number to remove: ")) - 1
         removed = data["bills"].pop(i)
+        save_data()
         print(f"Removed: {removed['name']}")
     except (ValueError, IndexError):
         print("Invalid selection!")
@@ -163,7 +176,10 @@ def add_grocery():
     name = input("Grocery item name: ").strip()
     date = input("Expiration date (YYYY-MM-DD): ").strip()
     data["groceries"].append({"name": name, "date": date})
+    save_data()
     print("Grocery added!")
+    message = f"*New Grocery Added!*\n*Item:* {name}\n*Expires:* {date}"
+    send_telegram(message)
 
 def list_groceries():
     today = datetime.today()
@@ -181,6 +197,7 @@ def remove_grocery():
     try:
         i = int(input("Enter grocery number to remove: ")) - 1
         removed = data["groceries"].pop(i)
+        save_data()
         print(f"Removed: {removed['name']}")
     except (ValueError, IndexError):
         print("Invalid selection!")
@@ -188,9 +205,11 @@ def remove_grocery():
 # ===== MAIN LOOP =====
 def main():
     input_family()
+    input_chat_id()
     while True:
         print_menu()
         choice = input("Select option: ").strip()
+
         if choice == "1":
             while True:
                 print("\n--- EVENTS ---")
@@ -203,6 +222,7 @@ def main():
                     remove_event()
                 elif cmd == "b":
                     break
+
         elif choice == "2":
             while True:
                 print("\n--- CHORES ---")
@@ -217,6 +237,7 @@ def main():
                     remove_chore()
                 elif cmd == "b":
                     break
+
         elif choice == "3":
             while True:
                 print("\n--- BILLS ---")
@@ -229,6 +250,7 @@ def main():
                     remove_bill()
                 elif cmd == "b":
                     break
+
         elif choice == "4":
             while True:
                 print("\n--- GROCERIES ---")
@@ -241,13 +263,13 @@ def main():
                     remove_grocery()
                 elif cmd == "b":
                     break
+
         elif choice == "5":
             print("Exiting app. Goodbye!")
             break
+
         else:
             print("Invalid option!")
 
 if __name__ == "__main__":
     main()
-
-
