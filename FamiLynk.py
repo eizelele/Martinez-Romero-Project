@@ -45,7 +45,7 @@ def input_user():
     name = input("Enter user name: ").strip()
     while not name:
         name = input("Enter user name: ").strip()
-
+        
     if name not in data["users"]:
         data["users"][name] = {
             "events": [],
