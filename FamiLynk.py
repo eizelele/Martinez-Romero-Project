@@ -1,42 +1,35 @@
-from datetime import datetime, timedelta
-import requests
-import json
-import os
-import threading
-import time
 
-# ===== SETTINGS =====
-TOKEN = "8712367782:AAGm-0SGpYlRWZbPhLaKLGbbw-LHWwHS4I0"  # replace with your Telegram bot token
+from datetime import datetime, timedelta
+import requests, json, os, threading, time
+
+TOKEN = "8712367782:AAGm-0SGpYlRWZbPhLaKLGbbw-LHWwHS4I0"
 DATA_FILE = "data.json"
 
-# ===== GLOBALS =====
 CHAT_ID = ""
 data = {}
+current_user = None
 
 # ===== TELEGRAM =====
-def send_telegram(message):
+def send_telegram(msg):
     if not CHAT_ID:
-        print("⚠️ No chat ID set. Telegram message not sent.")
+        print("⚠️ No chat ID")
         return
     try:
-        url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-        payload = {"chat_id": CHAT_ID, "text": message, "parse_mode": "Markdown"}
-        requests.post(url, data=payload)
-        print("✅ Telegram message sent!")
+        requests.post(
+            f"https://api.telegram.org/bot{TOKEN}/sendMessage",
+            data={"chat_id": CHAT_ID, "text": msg, "parse_mode": "Markdown"}
+        )
+        print("✅ Sent!")
     except Exception as e:
-        print(f"❌ Could not send message: {e}")
+        print("❌", e)
 
-# ===== DATA HANDLING =====
+# ===== DATA =====
 def load_data():
     global data
-    if os.path.exists(DATA_FILE):
-        try:
-            with open(DATA_FILE, "r") as f:
-                data = json.load(f)
-        except:
-            print("⚠️ Data file corrupted. Resetting.")
-            data = {"users": {}}
-    else:
+    try:
+        with open(DATA_FILE, "r") as f:
+            data = json.load(f)
+    except:
         data = {"users": {}}
 
     if "users" not in data:
@@ -46,354 +39,296 @@ def save_data():
     with open(DATA_FILE, "w") as f:
         json.dump(data, f, indent=4)
 
-# ===== USER MANAGEMENT =====
+# ===== USER =====
 def input_user():
+    global current_user
     name = input("Enter user name: ").strip()
     while not name:
-        name = input("User name cannot be empty: ").strip()
+        name = input("Enter user name: ").strip()
+
     if name not in data["users"]:
-        data["users"][name] = {"chores": [], "events": [], "bills": [], "groceries": [], "alarms": []}
+        data["users"][name] = {
+            "events": [],
+            "chores": [],
+            "bills": [],
+            "groceries": []
+        }
+
+    current_user = name
     print(f"👋 Welcome, {name}!")
-    return name
 
-def input_chat_id():
+def input_chat():
     global CHAT_ID
-    CHAT_ID = input("Enter your Telegram chat ID: ").strip()
-    while not CHAT_ID.isdigit():
-        CHAT_ID = input("Chat ID must be a number! Enter again: ").strip()
-    print("✅ Chat ID saved!")
+    CHAT_ID = input("Enter chat ID: ").strip()
+    print("✅ Saved!")
 
-# ===== REMINDERS LOOP =====
-def reminders_loop(user_name):
-    while True:
-        now = datetime.now()
-        usr = data["users"][user_name]
-
-        # EVENTS - notify every day before
-        for e in usr["events"]:
-            try:
-                event_dt = datetime.strptime(e["datetime"], "%Y-%m-%d %H:%M")
-                if now.date() <= event_dt.date() <= (now.date() + timedelta(days=1)) and not e.get("notified_today"):
-                    send_telegram(f"📅 *Upcoming Event!*\n*{e['text']}* at {event_dt.strftime('%I:%M %p, %b %d')}")
-                    e["notified_today"] = True
-            except:
-                continue
-
-        # BILLS - notify 3,1,0 days before
-        for b in usr["bills"]:
-            try:
-                bill_dt = datetime.strptime(b["date"], "%Y-%m-%d")
-                days_left = (bill_dt.date() - now.date()).days
-                for d in [3,1,0]:
-                    key = f"notified_{d}"
-                    if days_left == d and not b.get(key):
-                        send_telegram(f"💸 *Bill Reminder!*\n*{b['name']}* due in {d} day(s) ({bill_dt.strftime('%b %d')})")
-                        b[key] = True
-            except:
-                continue
-
-        # GROCERIES - notify 2,1,0 days before expiration
-        for g in usr["groceries"]:
-            try:
-                g_dt = datetime.strptime(g["date"], "%Y-%m-%d")
-                days_left = (g_dt.date() - now.date()).days
-                for d in [2,1,0]:
-                    key = f"notified_{d}"
-                    if days_left == d and not g.get(key):
-                        send_telegram(f"🥦 *Grocery Expiring Soon!*\n*{g['name']}* expires in {d} day(s) ({g_dt.strftime('%b %d')})")
-                        g[key] = True
-            except:
-                continue
-
-        # ALARMS
-        for a in usr["alarms"]:
-            try:
-                alarm_dt = datetime.strptime(a["datetime"], "%Y-%m-%d %H:%M")
-                if now >= alarm_dt and not a.get("triggered"):
-                    send_telegram(f"⏰ *Alarm!*\n*{a['text']}*")
-                    a["triggered"] = True
-            except:
-                continue
-
-        save_data()
-        time.sleep(60)
-
-# ===== HELPER FUNCTIONS =====
-def list_items(items, key_text="text", key_date="datetime"):
-    if not items:
-        print("No items yet.")
-        return
-    for i, item in enumerate(items,1):
-        date_val = item.get(key_date,"")
-        text_val = item.get(key_text,"")
-        print(f"{i}. {text_val} - {date_val}")
-
-def select_item(items):
-    list_items(items)
-    if not items:
-        return None
+# ===== DATE PARSER =====
+def parse_date(s):
     try:
-        idx = int(input("Select number: ").strip()) - 1
-        if idx < 0 or idx >= len(items):
-            print("❌ Invalid number!")
-            return None
-        return idx
+        return datetime.strptime(s, "%Y-%m-%d %H:%M")
     except:
-        print("❌ Invalid input!")
-        return None
+        try:
+            return datetime.strptime(s, "%Y-%m-%d")
+        except:
+            return None
+
+# ===== REMINDERS =====
+def reminders_loop():
+    while True:
+        try:
+            if not current_user:
+                time.sleep(5)
+                continue
+
+            usr = data["users"][current_user]
+            now = datetime.now()
+
+            # EVENTS (daily reminder)
+            for e in usr["events"]:
+                dt = parse_date(e.get("datetime") or e.get("date"))
+                if not dt:
+                    continue
+
+                days = (dt.date() - now.date()).days
+                if days >= 0:
+                    key = f"sent_{now.date()}"
+                    if not e.get(key):
+                        send_telegram(f"📅 *Event*\n{e['text']}\n{dt.strftime('%b %d %I:%M %p')}")
+                        e[key] = True
+
+            # BILLS
+            for b in usr["bills"]:
+                dt = parse_date(b.get("date"))
+                if not dt:
+                    continue
+
+                days = (dt.date() - now.date()).days
+                for d in [3,1,0]:
+                    key = f"sent_{d}"
+                    if days == d and not b.get(key):
+                        send_telegram(f"💸 *Bill*\n{b['name']} due in {d} day(s)")
+                        b[key] = True
+
+            # GROCERIES
+            for g in usr["groceries"]:
+                dt = parse_date(g.get("date"))
+                if not dt:
+                    continue
+
+                days = (dt.date() - now.date()).days
+                for d in [2,1,0]:
+                    key = f"sent_{d}"
+                    if days == d and not g.get(key):
+                        send_telegram(f"🥦 *Expiring*\n{g['name']} in {d} day(s)")
+                        g[key] = True
+
+            save_data()
+            time.sleep(30)
+
+        except Exception as e:
+            print("⚠️ Reminder error:", e)
+            time.sleep(5)
 
 # ===== EVENTS =====
-def events_menu(user_name):
-    usr = data["users"][user_name]
+def events_menu():
+    usr = data["users"][current_user]
+
     while True:
         print("\n--- EVENTS ---")
-        list_items(usr["events"], "text", "datetime")
-        print("a. Add  r. Remove  e. Edit  b. Back")
-        cmd = input("Choose: ").strip().lower()
-        if cmd == "a":
-            add_event(user_name)
-        elif cmd == "r":
-            idx = select_item(usr["events"])
-            if idx is not None:
-                removed = usr["events"].pop(idx)
-                save_data()
-                print(f"❌ Removed event: {removed['text']}")
-        elif cmd == "e":
-            idx = select_item(usr["events"])
-            if idx is not None:
-                edit_event(user_name, idx)
-        elif cmd == "b":
-            break
-        else:
-            print("❌ Invalid option!")
+        for i,e in enumerate(usr["events"],1):
+            print(f"{i}. {e['text']} - {e.get('datetime')}")
 
-def add_event(user_name):
-    usr = data["users"][user_name]
-    while True:
-        date_str = input("Event date & time (YYYY-MM-DD HH:MM, 24h format): ").strip()
-        try:
-            dt = datetime.strptime(date_str, "%Y-%m-%d %H:%M")
-            if dt < datetime.now():
-                print("❌ Date already elapsed! Try again.")
+        print("a add | r remove | e edit | b back")
+        c = input(">> ")
+
+        if c == "a":
+            d = input("Date (YYYY-MM-DD HH:MM): ")
+            dt = parse_date(d)
+            if not dt or dt < datetime.now():
+                print("❌ Invalid/past date")
                 continue
-            break
-        except:
-            print("❌ Invalid format!")
-    text = input("Event description: ").strip()
-    usr["events"].append({"datetime": dt.strftime("%Y-%m-%d %H:%M"), "text": text})
-    save_data()
-    send_telegram(f"📅 *New Event Added!*\n*{text}* at {dt.strftime('%I:%M %p, %b %d')}")
 
-def edit_event(user_name, idx):
-    usr = data["users"][user_name]
-    event = usr["events"][idx]
-    print(f"Editing event: {event['text']} - {event['datetime']}")
-    text = input(f"New description (or enter to keep): ").strip()
-    date_str = input(f"New date & time YYYY-MM-DD HH:MM (or enter to keep): ").strip()
-    if text:
-        event["text"] = text
-    if date_str:
-        try:
-            dt = datetime.strptime(date_str, "%Y-%m-%d %H:%M")
-            if dt < datetime.now():
-                print("❌ Date already elapsed! Not updated.")
-            else:
-                event["datetime"] = dt.strftime("%Y-%m-%d %H:%M")
-        except:
-            print("❌ Invalid date format. Not updated.")
-    save_data()
-    print("✅ Event updated!")
+            txt = input("Event: ")
+            usr["events"].append({"datetime": d, "text": txt})
+            save_data()
+            send_telegram(f"📅 *New Event*\n{txt}\n{dt.strftime('%b %d %I:%M %p')}")
+
+        elif c == "r":
+            i = int(input("num: ")) - 1
+            usr["events"].pop(i)
+            save_data()
+
+        elif c == "e":
+            i = int(input("num: ")) - 1
+            ev = usr["events"][i]
+
+            print(f"Editing: {ev['text']} - {ev.get('datetime')}")
+            new_text = input("New text (enter skip): ")
+            new_date = input("New date YYYY-MM-DD HH:MM (enter skip): ")
+
+            if new_text:
+                ev["text"] = new_text
+
+            if new_date:
+                dt = parse_date(new_date)
+                if dt and dt >= datetime.now():
+                    ev["datetime"] = new_date
+                else:
+                    print("❌ Invalid date")
+
+            save_data()
+            print("✅ Updated!")
+
+        elif c == "b":
+            break
 
 # ===== CHORES =====
-def chores_menu(user_name):
-    usr = data["users"][user_name]
+def chores_menu():
+    usr = data["users"][current_user]
+
     while True:
         print("\n--- CHORES ---")
         for i,c in enumerate(usr["chores"],1):
-            status = "✅ Done" if c.get("done") else "❌ Pending"
-            print(f"{i}. {c['name']} - {c['person']} ({status})")
-        print("a. Add  d. Done  r. Remove  b. Back")
-        cmd = input("Choose: ").strip().lower()
-        if cmd == "a":
-            add_chore(user_name)
-        elif cmd == "d":
-            idx = select_item(usr["chores"])
-            if idx is not None:
-                usr["chores"][idx]["done"] = True
-                save_data()
-                print("✅ Chore marked as done!")
-        elif cmd == "r":
-            idx = select_item(usr["chores"])
-            if idx is not None:
-                removed = usr["chores"].pop(idx)
-                save_data()
-                print(f"❌ Removed chore: {removed['name']}")
-        elif cmd == "b":
-            break
-        else:
-            print("❌ Invalid option!")
+            print(f"{i}. {c['name']} {'✅' if c['done'] else '❌'}")
 
-def add_chore(user_name):
-    usr = data["users"][user_name]
-    name = input("Chore name: ").strip()
-    person = input("Assigned to: ").strip()
-    usr["chores"].append({"name": name, "person": person, "done": False})
-    save_data()
-    send_telegram(f"🧹 *New Chore Assigned!*\n*{person}*: {name}")
+        print("a add | d done | r remove | b back")
+        c = input(">> ")
+
+        if c == "a":
+            name = input("Chore: ")
+            usr["chores"].append({"name": name, "done": False})
+            save_data()
+            send_telegram(f"🧹 *New Chore*\n{name}")
+
+        elif c == "d":
+            i = int(input("num: ")) - 1
+            usr["chores"][i]["done"] = True
+            save_data()
+
+        elif c == "r":
+            i = int(input("num: ")) - 1
+            usr["chores"].pop(i)
+            save_data()
+
+        elif c == "b":
+            break
 
 # ===== BILLS =====
-def bills_menu(user_name):
-    usr = data["users"][user_name]
+def bills_menu():
+    usr = data["users"][current_user]
+
     while True:
         print("\n--- BILLS ---")
         for i,b in enumerate(usr["bills"],1):
             print(f"{i}. {b['name']} - {b['date']}")
-        print("a. Add  r. Remove  e. Edit  b. Back")
-        cmd = input("Choose: ").strip().lower()
-        if cmd == "a":
-            add_bill(user_name)
-        elif cmd == "r":
-            idx = select_item(usr["bills"])
-            if idx is not None:
-                removed = usr["bills"].pop(idx)
-                save_data()
-                print(f"❌ Removed bill: {removed['name']}")
-        elif cmd == "e":
-            idx = select_item(usr["bills"])
-            if idx is not None:
-                edit_bill(user_name, idx)
-        elif cmd == "b":
-            break
-        else:
-            print("❌ Invalid option!")
 
-def add_bill(user_name):
-    usr = data["users"][user_name]
-    while True:
-        date_str = input("Bill due date (YYYY-MM-DD): ").strip()
-        try:
-            dt = datetime.strptime(date_str, "%Y-%m-%d")
-            break
-        except:
-            print("❌ Invalid format!")
-    name = input("Bill name: ").strip()
-    usr["bills"].append({"date": dt.strftime("%Y-%m-%d"), "name": name})
-    save_data()
-    send_telegram(f"💸 *New Bill Added!*\n*{name}* due {dt.strftime('%b %d')}")
+        print("a add | r remove | e edit | b back")
+        c = input(">> ")
 
-def edit_bill(user_name, idx):
-    usr = data["users"][user_name]
-    bill = usr["bills"][idx]
-    print(f"Editing bill: {bill['name']} - {bill['date']}")
-    name = input(f"New name (or enter to keep): ").strip()
-    date_str = input(f"New due date YYYY-MM-DD (or enter to keep): ").strip()
-    if name:
-        bill["name"] = name
-    if date_str:
-        try:
-            dt = datetime.strptime(date_str, "%Y-%m-%d")
-            bill["date"] = dt.strftime("%Y-%m-%d")
-        except:
-            print("❌ Invalid format. Date not updated.")
-    save_data()
-    print("✅ Bill updated!")
+        if c == "a":
+            d = input("Date (YYYY-MM-DD): ")
+            if not parse_date(d):
+                print("❌ Invalid")
+                continue
+
+            name = input("Bill: ")
+            usr["bills"].append({"date": d, "name": name})
+            save_data()
+            send_telegram(f"💸 *New Bill*\n{name}\nDue: {d}")
+
+        elif c == "r":
+            i = int(input("num: ")) - 1
+            usr["bills"].pop(i)
+            save_data()
+
+        elif c == "e":
+            i = int(input("num: ")) - 1
+            b = usr["bills"][i]
+
+            name = input("New name (enter skip): ")
+            date = input("New date YYYY-MM-DD (enter skip): ")
+
+            if name:
+                b["name"] = name
+            if date and parse_date(date):
+                b["date"] = date
+
+            save_data()
+            print("✅ Updated!")
+
+        elif c == "b":
+            break
 
 # ===== GROCERIES =====
-def groceries_menu(user_name):
-    usr = data["users"][user_name]
+def groceries_menu():
+    usr = data["users"][current_user]
+
     while True:
         print("\n--- GROCERIES ---")
         for i,g in enumerate(usr["groceries"],1):
-            print(f"{i}. {g['name']} - expires {g['date']}")
-        print("a. Add  r. Remove  e. Edit  b. Back")
-        cmd = input("Choose: ").strip().lower()
-        if cmd == "a":
-            add_grocery(user_name)
-        elif cmd == "r":
-            idx = select_item(usr["groceries"])
-            if idx is not None:
-                removed = usr["groceries"].pop(idx)
-                save_data()
-                print(f"❌ Removed grocery: {removed['name']}")
-        elif cmd == "e":
-            idx = select_item(usr["groceries"])
-            if idx is not None:
-                edit_grocery(user_name, idx)
-        elif cmd == "b":
-            break
-        else:
-            print("❌ Invalid option!")
+            print(f"{i}. {g['name']} - {g['date']}")
 
-def add_grocery(user_name):
-    usr = data["users"][user_name]
-    while True:
-        date_str = input("Expiration date (YYYY-MM-DD): ").strip()
-        try:
-            dt = datetime.strptime(date_str, "%Y-%m-%d")
-            if dt.date() < datetime.now().date():
-                print("❌ Date already elapsed! Try again.")
+        print("a add | r remove | e edit | b back")
+        c = input(">> ")
+
+        if c == "a":
+            d = input("Date (YYYY-MM-DD): ")
+            if not parse_date(d):
+                print("❌ Invalid")
                 continue
+
+            name = input("Item: ")
+            usr["groceries"].append({"date": d, "name": name})
+            save_data()
+            send_telegram(f"🥦 *New Grocery*\n{name}\nExpires: {d}")
+
+        elif c == "r":
+            i = int(input("num: ")) - 1
+            usr["groceries"].pop(i)
+            save_data()
+
+        elif c == "e":
+            i = int(input("num: ")) - 1
+            g = usr["groceries"][i]
+
+            name = input("New name (enter skip): ")
+            date = input("New date YYYY-MM-DD (enter skip): ")
+
+            if name:
+                g["name"] = name
+            if date and parse_date(date):
+                g["date"] = date
+
+            save_data()
+            print("✅ Updated!")
+
+        elif c == "b":
             break
-        except:
-            print("❌ Invalid format!")
-    name = input("Grocery item name: ").strip()
-    usr["groceries"].append({"date": dt.strftime("%Y-%m-%d"), "name": name})
-    save_data()
-    send_telegram(f"🥦 *New Grocery Added!*\n*{name}* expires {dt.strftime('%b %d')}")
 
-def edit_grocery(user_name, idx):
-    usr = data["users"][user_name]
-    g = usr["groceries"][idx]
-    print(f"Editing grocery: {g['name']} - expires {g['date']}")
-    name = input("New name (or enter to keep): ").strip()
-    date_str = input("New expiration date YYYY-MM-DD (or enter to keep): ").strip()
-    if name:
-        g["name"] = name
-    if date_str:
-        try:
-            dt = datetime.strptime(date_str, "%Y-%m-%d")
-            if dt.date() >= datetime.now().date():
-                g["date"] = dt.strftime("%Y-%m-%d")
-            else:
-                print("❌ Date already elapsed! Not updated.")
-        except:
-            print("❌ Invalid format. Date not updated.")
-    save_data()
-    print("✅ Grocery updated!")
-
-# ===== MAIN MENU =====
+# ===== MAIN =====
 def main():
     load_data()
-    user_name = input_user()
-    input_chat_id()
+    input_user()
+    input_chat()
 
-    t = threading.Thread(target=reminders_loop, args=(user_name,), daemon=True)
-    t.start()
+    threading.Thread(target=reminders_loop, daemon=True).start()
 
     while True:
-        print("\n--- MENU ---")
-        print("1. Events")
-        print("2. Chores")
-        print("3. Bills")
-        print("4. Groceries")
-        print("5. Switch User")
-        print("6. Exit")
-        choice = input("Choose option: ").strip()
-        if choice == "1":
-            events_menu(user_name)
-        elif choice == "2":
-            chores_menu(user_name)
-        elif choice == "3":
-            bills_menu(user_name)
-        elif choice == "4":
-            groceries_menu(user_name)
-        elif choice == "5":
-            user_name = input_user()
-        elif choice == "6":
-            print("👋 Goodbye!")
+        print("\n1 Events\n2 Chores\n3 Bills\n4 Groceries\n5 Switch User\n6 Exit")
+        c = input(">> ")
+
+        if c == "1":
+            events_menu()
+        elif c == "2":
+            chores_menu()
+        elif c == "3":
+            bills_menu()
+        elif c == "4":
+            groceries_menu()
+        elif c == "5":
+            input_user()
+        elif c == "6":
             break
-        else:
-            print("❌ Invalid option!")
 
 if __name__ == "__main__":
     main()
